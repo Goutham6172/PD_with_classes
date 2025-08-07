@@ -120,3 +120,5 @@ if __name__ == "__main__":
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
+
+# https://1drv.ms/w/c/fd9c3d82ca06da8b/EbNd5EqlnKlEr2a-YnFYdLkBcDS9DQJw4vcILXQy2tzNig?e=un3PCJ
