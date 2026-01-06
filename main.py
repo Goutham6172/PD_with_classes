@@ -123,3 +123,204 @@ if __name__ == "__main__":
 
 # https://1drv.ms/w/c/fd9c3d82ca06da8b/EbNd5EqlnKlEr2a-YnFYdLkBcDS9DQJw4vcILXQy2tzNig?e=un3PCJ
 # https://1drv.ms/w/c/fd9c3d82ca06da8b/Ed2G0R9g5YVGrBB-oZjEpNABxur3pGtAphdJd7wSkxXyWA?e=KdZsqm
+
+/*
+MyApp.cpp
+#include "pch.h"
+#include "MyApp.h"
+#include "MyDlg.h"
+
+CMyApp theApp;
+
+BOOL CMyApp::InitInstance()
+{
+    CWinApp::InitInstance();
+
+    CMyDlg dlg;
+    m_pMainWnd = &dlg;
+    dlg.DoModal();
+
+    return FALSE;
+}
+
+.h
+#pragma once
+#include "resource.h"
+
+class CMyApp : public CWinApp
+{
+public:
+    virtual BOOL InitInstance();
+};
+
+extern CMyApp theApp;
+
+MyDlg.cpp
+#include "pch.h"
+#include "MyApp.h"
+#include "MyDlg.h"
+
+IMPLEMENT_DYNAMIC(CMyDlg, CDialogEx)
+
+CMyDlg::CMyDlg(CWnd* pParent)
+    : CDialogEx(IDD_MY_DIALOG, pParent)
+{
+}
+
+void CMyDlg::DoDataExchange(CDataExchange* pDX)
+{
+    CDialogEx::DoDataExchange(pDX);
+    DDX_Text(pDX, IDC_EDIT1, m_editText);
+}
+
+BEGIN_MESSAGE_MAP(CMyDlg, CDialogEx)
+    ON_BN_CLICKED(IDC_BUTTON_ADD, &CMyDlg::OnBnClickedAdd)
+    ON_WM_DESTROY()
+END_MESSAGE_MAP()
+
+BOOL CMyDlg::OnInitDialog()
+{
+    CDialogEx::OnInitDialog();
+
+    InitializeCriticalSection(&g_cs);
+    g_wakeEvent.Create(FALSE, FALSE, nullptr);
+
+    AfxBeginThread(ExpiryThreadProc, nullptr);
+
+    return TRUE;
+}
+
+void CMyDlg::OnBnClickedAdd()
+{
+    UpdateData(TRUE);
+
+    Item item;
+    item.name = m_editText;
+    item.expiry = CTime::GetCurrentTime() + CTimeSpan(0, 0, 0, 10);
+
+    EnterCriticalSection(&g_cs);
+    g_items.push_back(item);   // FIFO
+    LeaveCriticalSection(&g_cs);
+
+    g_wakeEvent.SetEvent();    // wake worker
+}
+
+void CMyDlg::OnDestroy()
+{
+    CDialogEx::OnDestroy();
+
+    EnterCriticalSection(&g_cs);
+    g_stopThread = true;
+    LeaveCriticalSection(&g_cs);
+
+    g_wakeEvent.SetEvent();
+    Sleep(100);
+
+    DeleteCriticalSection(&g_cs);
+}
+
+MyDlg.h
+
+#pragma once
+#include "resource.h"
+#include "Globals.h"
+
+class CMyDlg : public CDialogEx
+{
+public:
+    CMyDlg(CWnd* pParent = nullptr);
+
+#ifdef AFX_DESIGN_TIME
+    enum { IDD = IDD_MY_DIALOG };
+#endif
+
+protected:
+    virtual void DoDataExchange(CDataExchange* pDX);
+    virtual BOOL OnInitDialog();
+    afx_msg void OnDestroy();
+    afx_msg void OnBnClickedAdd();
+
+    DECLARE_MESSAGE_MAP()
+
+private:
+    CString m_editText;
+};
+
+ExpiryThread.cpp
+#include "Globals.h"
+
+UINT ExpiryThreadProc(LPVOID)
+{
+    while (true)
+    {
+        DWORD waitMs = INFINITE;
+
+        EnterCriticalSection(&g_cs);
+
+        if (g_stopThread)
+        {
+            LeaveCriticalSection(&g_cs);
+            break;
+        }
+
+        if (!g_items.empty())
+        {
+            CTime now = CTime::GetCurrentTime();
+            CTime expiry = g_items.front().expiry;
+
+            if (expiry <= now)
+            {
+                g_items.pop_front();   // remove oldest
+                LeaveCriticalSection(&g_cs);
+                continue;
+            }
+
+            waitMs = (DWORD)((expiry - now).GetTotalSeconds() * 1000);
+        }
+
+        LeaveCriticalSection(&g_cs);
+
+        // wait until expiry or until new item added
+        g_wakeEvent.Lock(waitMs);
+        g_wakeEvent.ResetEvent();
+    }
+
+    return 0;
+}
+
+Globals.cpp
+#include "Globals.h"
+
+std::deque<Item> g_items;
+
+CRITICAL_SECTION g_cs;
+CEvent g_wakeEvent;
+bool g_stopThread = false;
+
+Globals.h
+
+#pragma once
+#include <deque>
+#include "Item.h"
+
+extern std::deque<Item> g_items;
+
+extern CRITICAL_SECTION g_cs;
+extern CEvent g_wakeEvent;
+extern bool g_stopThread;
+
+UINT ExpiryThreadProc(LPVOID);
+
+Item.h
+
+#pragma once
+#include <afx.h>
+
+struct Item
+{
+    CString name;
+    CTime   expiry;
+};
+
+
+*/
