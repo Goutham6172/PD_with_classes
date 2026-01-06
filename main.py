@@ -124,7 +124,7 @@ if __name__ == "__main__":
 # https://1drv.ms/w/c/fd9c3d82ca06da8b/EbNd5EqlnKlEr2a-YnFYdLkBcDS9DQJw4vcILXQy2tzNig?e=un3PCJ
 # https://1drv.ms/w/c/fd9c3d82ca06da8b/Ed2G0R9g5YVGrBB-oZjEpNABxur3pGtAphdJd7wSkxXyWA?e=KdZsqm
 
-/*
+"""
 MyApp.cpp
 #include "pch.h"
 #include "MyApp.h"
@@ -321,6 +321,176 @@ struct Item
     CString name;
     CTime   expiry;
 };
+"""
 
 
-*/
+"""
+Item.h
+#pragma once
+#include <afx.h>   // CTime
+
+struct Item
+{
+    CTime expiry;
+};
+
+
+WorkerThread.h
+#pragma once
+
+#include <deque>
+#include <windows.h>
+#include "Item.h"
+
+// Shared objects
+extern std::deque<Item> g_items;
+extern CRITICAL_SECTION g_cs;
+extern HANDLE g_hWakeEvent;
+extern bool g_exitThread;
+
+// Worker thread procedure
+UINT WorkerThreadProc(LPVOID pParam);
+
+
+WorkerThread.cpp
+#include "WorkerThread.h"
+
+// Globals
+std::deque<Item> g_items;
+CRITICAL_SECTION g_cs;
+HANDLE g_hWakeEvent = nullptr;
+bool g_exitThread = false;
+
+UINT WorkerThreadProc(LPVOID)
+{
+    while (!g_exitThread)
+    {
+        // Wake every 1 second or when signaled
+        WaitForSingleObject(g_hWakeEvent, 1000);
+
+        EnterCriticalSection(&g_cs);
+
+        if (!g_items.empty())
+        {
+            CTime now = CTime::GetCurrentTime();
+
+            // Remove all expired items (oldest first)
+            while (!g_items.empty() &&
+                   g_items.front().expiry <= now)
+            {
+                g_items.pop_front();
+            }
+        }
+
+        ResetEvent(g_hWakeEvent);
+        LeaveCriticalSection(&g_cs);
+    }
+
+    return 0;
+}
+
+
+
+MyDlg.h
+#pragma once
+
+#include <afxwin.h>
+
+class CMyDlg : public CDialogEx
+{
+public:
+    CMyDlg();
+
+protected:
+    virtual BOOL OnInitDialog();
+    afx_msg void OnAddButton();
+    virtual void OnCancel();
+
+    DECLARE_MESSAGE_MAP()
+
+private:
+    CWinThread* m_pWorkerThread;
+};
+
+
+
+MyDlg.cpp
+#include "MyDlg.h"
+#include "WorkerThread.h"
+
+BEGIN_MESSAGE_MAP(CMyDlg, CDialogEx)
+    ON_BN_CLICKED(IDC_ADD_BUTTON, &CMyDlg::OnAddButton)
+END_MESSAGE_MAP()
+
+CMyDlg::CMyDlg()
+    : CDialogEx(IDD_MY_DIALOG),
+      m_pWorkerThread(nullptr)
+{
+}
+
+BOOL CMyDlg::OnInitDialog()
+{
+    CDialogEx::OnInitDialog();
+
+    // Initialize synchronization
+    InitializeCriticalSection(&g_cs);
+    g_hWakeEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+    // Start worker thread ONCE
+    m_pWorkerThread = AfxBeginThread(WorkerThreadProc, nullptr);
+
+    return TRUE;
+}
+
+
+void CMyDlg::OnAddButton()
+{
+    Item item;
+    item.expiry = CTime::GetCurrentTime() + CTimeSpan(0, 0, 0, 10); // +10 sec
+
+    EnterCriticalSection(&g_cs);
+    g_items.push_back(item);   // ordered insertion
+    LeaveCriticalSection(&g_cs);
+
+    // Wake worker thread immediately
+    SetEvent(g_hWakeEvent);
+}
+
+void CMyDlg::OnCancel()
+{
+    // Signal thread to exit
+    g_exitThread = true;
+    SetEvent(g_hWakeEvent);
+
+    if (m_pWorkerThread)
+    {
+        WaitForSingleObject(m_pWorkerThread->m_hThread, INFINITE);
+    }
+
+    CloseHandle(g_hWakeEvent);
+    DeleteCriticalSection(&g_cs);
+
+    CDialogEx::OnCancel();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
